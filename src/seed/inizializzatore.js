@@ -48,6 +48,24 @@ async function avviaInizializzazione() {
             defaults: {
                 description: 'Permette di visualizzare, modificare e disattivare gli utenti'}
         })
+
+        await Permesso.findOrCreate({
+            where: {name: 'ordini:creare'},
+            defaults: {
+                description: 'Permette al cliente di inviare un nuovo ordine dal carrello'}
+        })
+
+        await Permesso.findOrCreate({
+            where: {name: 'ordini:evadere'},
+            defaults: {
+                description: 'Permette all\'operatore di magazzino di prendere in carico ed evadere gli ordini, scalando lo stock'}
+        })
+
+        await Permesso.findOrCreate({
+            where: {name: 'fatture:gestione'},
+            defaults: {
+                description: 'Permette alla contabilità di generare, consultare e cercare le fatture'}
+        })
         console.log('Permessi di sistema pronti')
 
         // creazione dei ruoli
@@ -56,11 +74,23 @@ async function avviaInizializzazione() {
             defaults: {
                 description: 'Accesso totale a tutte le funzionalità del gestionale'}
         })
-        
-        await Ruolo.findOrCreate({
+
+        const [ruoloCliente] = await Ruolo.findOrCreate({
             where: { name: 'CLIENTE'},
             defaults: {
                 description: 'Utente finale che effettua gli ordini sul catalogo'}
+        })
+
+        const [ruoloOperatore] = await Ruolo.findOrCreate({
+            where: { name: 'OPERATORE_MAGAZZINO'},
+            defaults: {
+                description: 'Gestisce la lista ordini e l\'evasione, senza accesso a prezzi e fatture'}
+        })
+
+        const [ruoloContabilita] = await Ruolo.findOrCreate({
+            where: { name: 'CONTABILITA'},
+            defaults: {
+                description: 'Genera e consulta le fatture degli ordini evasi'}
         })
         console.log('Ruoli standard creati')
 
@@ -69,6 +99,17 @@ async function avviaInizializzazione() {
         const tuttiIPermessi = await Permesso.findAll()
         await ruoloAdmin.setPermessi(tuttiIPermessi)
         console.log(`Tutti i permessi (${tuttiIPermessi.length}) associati al ruolo Admin`)
+
+        // assegnazione dei permessi operativi ai ruoli CLIENTE e OPERATORE_MAGAZZINO
+        const permessoCreaOrdine = await Permesso.findOne({ where: { name: 'ordini:creare' } })
+        await ruoloCliente.addPermessi(permessoCreaOrdine)
+
+        const permessoEvadiOrdine = await Permesso.findOne({ where: { name: 'ordini:evadere' } })
+        await ruoloOperatore.addPermessi(permessoEvadiOrdine)
+
+        const permessoGestioneFatture = await Permesso.findOne({ where: { name: 'fatture:gestione' } })
+        await ruoloContabilita.addPermessi(permessoGestioneFatture)
+        console.log('Permessi operativi assegnati ai ruoli CLIENTE, OPERATORE_MAGAZZINO e CONTABILITA')
 
         // creazione utente admin
         const emailAdmin = 'admin@orvent.it'

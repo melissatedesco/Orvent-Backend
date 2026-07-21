@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const permessoController = require('../controllers/permessoController')
 const ruoloController = require('../controllers/ruoloController')
+const gruppoController = require('../controllers/gruppoController')
 const {verificaToken} = require('../middleware/authJwt')
 
 // rotte permessi
@@ -42,5 +43,26 @@ router.post('/ruoli/associa-permesso', ruoloController.associaPermesso)
 
 // assegna un ruolo ad un utente
 router.post('/utenti/assegna-ruolo', ruoloController.assegnaAUtente)
+
+// rotte gruppo
+router.post('/gruppi', gruppoController.creaGruppo)
+
+// visualizza tutti i gruppi
+router.get('/gruppi', verificaToken, gruppoController.lista)
+
+// visualizza un singolo gruppo (con i ruoli associati)
+router.get('/gruppi/:id', verificaToken, gruppoController.visualizzaGruppo)
+
+// aggiorna un gruppo
+router.put('/gruppi/:id', verificaToken, gruppoController.modifica)
+
+// elimina un gruppo
+router.delete('/gruppi/:id', verificaToken, gruppoController.elimina)
+
+// associa un ruolo a un gruppo
+router.post('/gruppi/associa-ruolo', gruppoController.associaRuolo)
+
+// aggiunge un utente a un gruppo
+router.post('/utenti/assegna-gruppo', gruppoController.aggiungiUtente)
 
 module.exports= router

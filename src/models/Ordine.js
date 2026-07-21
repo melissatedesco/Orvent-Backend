@@ -25,11 +25,12 @@ Ordine.init({
   // da Sequelize tramite le associazioni nel file index.js
 
   stato: {
-    type: DataTypes.ENUM('NUOVO', 'IN_EVASIONE', 'EVASO', 'FATTURATO'),
+    type: DataTypes.ENUM('NUOVO', 'IN_EVASIONE', 'EVASO', 'FATTURATO', 'ANNULLATO'),
     allowNull: false,
     defaultValue: 'NUOVO'
     // REQUISITO DI DOMINIO: Definisce il ciclo di vita dell'ordine.
     // Avanza secondo il flusso stabilito dai servizi di business.
+    // ANNULLATO è uno stato terminale alternativo, raggiungibile solo da NUOVO.
   },
 
   totale_importo: {

@@ -16,6 +16,9 @@ router.put('/profilo', verificaToken, utenteController.aggiornaProfilo)
 // rotta amministrativa per visualizzare tutti gli utenti
 router.get('/', verificaToken, hasPermission('utenti:gestione'), utenteController.lista)
 
+// rotta amministrativa per creare un utente scegliendo il ruolo (es. operatore, contabilità, admin)
+router.post('/', verificaToken, hasPermission('utenti:gestione'), utenteController.creaUtente)
+
 // rotta amministrativa per modificare un utente tramite ID
 router.put('/:id', verificaToken, hasPermission('utenti:gestione'), utenteController.modifica)
 

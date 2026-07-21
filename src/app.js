@@ -6,6 +6,8 @@ const authRoutes = require('./routes/authRoutes')
 const utenteRoutes =require('./routes/utenteRoutes')
 const prodottoRoutes = require('./routes/prodottoRoutes')
 const sicurezzaRoutes= require('./routes/sicurezzaRoutes')
+const ordineRoutes = require('./routes/ordineRoutes')
+const fatturaRoutes = require('./routes/fatturaRoutes')
 const app = express()
 const PORT = process.env.PORT || 5000
 
@@ -18,6 +20,8 @@ app.use('/api/utenti', utenteRoutes)
 app.use('/api/auth', authRoutes)
 app.use('/api/prodotti', prodottoRoutes)
 app.use('/api/sicurezza', sicurezzaRoutes)
+app.use('/api/ordini', ordineRoutes)
+app.use('/api/fatture', fatturaRoutes)
 
 // rotta test rapido nel browser
 app.get('/', (req, res) => {
