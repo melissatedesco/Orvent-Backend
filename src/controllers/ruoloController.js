@@ -69,4 +69,89 @@ const assegnaAUtente = async (req, res) => {
     }
 }
 
-module.exports= {creaRuolo, assegnaAUtente, associaPermesso}
+// lista di tutti i ruoli
+const lista = async (req, res) => {
+    try {
+        const ruoli = await Ruolo.findAll()
+        return res.status(200).json(ruoli)
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Errore del server'
+        })
+    }
+}
+
+// ottieni un singolo ruolo (con i permessi associati) tramite id
+const visualizzaRuolo = async (req, res) => {
+    try {
+        const { id } = req.params
+        const ruolo = await Ruolo.findByPk(id, {
+            include: [{ model: Permesso, as: 'permessi' }]
+        })
+
+        if (!ruolo) {
+            return res.status(404).json({
+                message: 'Ruolo non trovato'
+            })
+        }
+
+        return res.status(200).json(ruolo)
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Errore del server'
+        })
+    }
+}
+
+// aggiorna un ruolo esistente
+const modifica = async (req, res) => {
+    try {
+        const { id } = req.params
+        const { nome, descrizione } = req.body
+
+        const ruolo = await Ruolo.findByPk(id)
+        if (!ruolo) {
+            return res.status(404).json({
+                message: 'Ruolo non trovato'
+            })
+        }
+
+        if (nome !== undefined) ruolo.name = nome
+        if (descrizione !== undefined) ruolo.description = descrizione
+        await ruolo.save()
+
+        return res.status(200).json({
+            message: 'Ruolo aggiornato con successo',
+            ruolo
+        })
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Errore del server'
+        })
+    }
+}
+
+// elimina un ruolo
+const elimina = async (req, res) => {
+    try {
+        const { id } = req.params
+        const ruolo = await Ruolo.findByPk(id)
+
+        if (!ruolo) {
+            return res.status(404).json({
+                message: 'Ruolo non trovato'
+            })
+        }
+
+        await ruolo.destroy()
+        return res.status(200).json({
+            message: 'Ruolo eliminato con successo'
+        })
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Errore del server'
+        })
+    }
+}
+
+module.exports= {creaRuolo, assegnaAUtente, associaPermesso, lista, visualizzaRuolo, modifica, elimina}

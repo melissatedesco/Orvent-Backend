@@ -87,4 +87,149 @@ const ottieniProfilo = async (req, res) => {
     }
 }
 
-module.exports= {registra, ottieniProfilo}
+// lista di tutti gli utenti (uso amministrativo)
+const lista = async (req, res) => {
+    try {
+        const utenti = await Utente.findAll({
+            attributes: ['id', 'nome', 'cognome', 'email', 'attivo', 'createdAt']
+        })
+        return res.status(200).json(utenti)
+    } catch (error) {
+        console.error('Errore durante il recupero degli utenti:', error)
+        return res.status(500).json({
+            message: 'Errore interno del server durante il recupero degli utenti'
+        })
+    }
+}
+
+// ottieni un singolo utente tramite id (uso amministrativo)
+const visualizzaUtente = async (req, res) => {
+    try {
+        const { id } = req.params
+        const utente = await Utente.findByPk(id, {
+            attributes: ['id', 'nome', 'cognome', 'email', 'attivo', 'createdAt']
+        })
+
+        if (!utente) {
+            return res.status(404).json({
+                message: 'Utente non trovato'
+            })
+        }
+
+        return res.status(200).json(utente)
+    } catch (error) {
+        console.error('Errore durante il recupero dell\'utente:', error)
+        return res.status(500).json({
+            message: 'Errore interno del server durante il recupero dell\'utente'
+        })
+    }
+}
+
+// aggiorna il profilo dell'utente autenticato
+const aggiornaProfilo = async (req, res) => {
+    try {
+        const idUtente = req.utente.id
+        const { nome, cognome, password } = req.body
+
+        const utente = await Utente.findByPk(idUtente)
+        if (!utente) {
+            return res.status(404).json({
+                message: 'Utente non trovato'
+            })
+        }
+
+        if (nome !== undefined) utente.nome = nome
+        if (cognome !== undefined) utente.cognome = cognome
+        if (password) {
+            const salt = await bcrypt.genSalt(10)
+            utente.password_hash = await bcrypt.hash(password, salt)
+        }
+
+        await utente.save()
+
+        return res.status(200).json({
+            message: 'Profilo aggiornato con successo',
+            utente: {
+                id: utente.id,
+                nome: utente.nome,
+                cognome: utente.cognome,
+                email: utente.email
+            }
+        })
+    } catch (error) {
+        console.error('Errore durante l\'aggiornamento del profilo:', error)
+        return res.status(500).json({
+            message: 'Errore interno del server durante l\'aggiornamento del profilo'
+        })
+    }
+}
+
+// aggiorna un utente tramite id (uso amministrativo)
+const modifica = async (req, res) => {
+    try {
+        const { id } = req.params
+        const { nome, cognome, email, password, attivo } = req.body
+
+        const utente = await Utente.findByPk(id)
+        if (!utente) {
+            return res.status(404).json({
+                message: 'Utente non trovato'
+            })
+        }
+
+        if (nome !== undefined) utente.nome = nome
+        if (cognome !== undefined) utente.cognome = cognome
+        if (email !== undefined) utente.email = email
+        if (attivo !== undefined) utente.attivo = attivo
+        if (password) {
+            const salt = await bcrypt.genSalt(10)
+            utente.password_hash = await bcrypt.hash(password, salt)
+        }
+
+        await utente.save()
+
+        return res.status(200).json({
+            message: 'Utente aggiornato con successo',
+            utente: {
+                id: utente.id,
+                nome: utente.nome,
+                cognome: utente.cognome,
+                email: utente.email,
+                attivo: utente.attivo
+            }
+        })
+    } catch (error) {
+        console.error('Errore durante l\'aggiornamento dell\'utente:', error)
+        return res.status(500).json({
+            message: 'Errore interno del server durante l\'aggiornamento dell\'utente'
+        })
+    }
+}
+
+// disattiva un utente (soft delete, per preservare lo storico fiscale e degli ordini)
+const elimina = async (req, res) => {
+    try {
+        const { id } = req.params
+        const utente = await Utente.findByPk(id)
+
+        if (!utente) {
+            return res.status(404).json({
+                message: 'Utente non trovato'
+            })
+        }
+
+        utente.attivo = false
+        await utente.save()
+
+        return res.status(200).json({
+            message: 'Utente disattivato con successo'
+        })
+    } catch (error) {
+        console.error('Errore durante l\'eliminazione dell\'utente:', error)
+        return res.status(500).json({
+            message: 'Errore interno del server durante l\'eliminazione dell\'utente'
+        })
+    }
+}
+
+module.exports= {registra, ottieniProfilo, lista, visualizzaUtente, aggiornaProfilo, modifica, elimina}

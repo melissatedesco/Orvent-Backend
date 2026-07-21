@@ -13,16 +13,40 @@ async function avviaInizializzazione() {
 
         // creazione dei permessi base
         // uso findOrCreate per evitare dublicati se lo script viene lanciato due volte
-        const [permessoCatalogo] = await Permesso.findOrCreate({
+        await Permesso.findOrCreate({
             where: {name: 'catalogo:gestione'},
             defaults: {
                 description: 'Permette di creare, modificare e disattivare prodotti'}
         })
 
-        const [permessoOrdini] = await Permesso.findOrCreate({
+        await Permesso.findOrCreate({
             where: {name: 'ordini:gestione'},
             defaults: {
                 description: 'Permettere di gestire, evadere e fatturare gli ordini'}
+        })
+
+        await Permesso.findOrCreate({
+            where: {name: 'prodotti:creare'},
+            defaults: {
+                description: 'Permette di creare nuovi prodotti nel catalogo'}
+        })
+
+        await Permesso.findOrCreate({
+            where: {name: 'prodotti:modificare'},
+            defaults: {
+                description: 'Permette di modificare i prodotti esistenti nel catalogo'}
+        })
+
+        await Permesso.findOrCreate({
+            where: {name: 'prodotti:eliminare'},
+            defaults: {
+                description: 'Permette di disattivare i prodotti dal catalogo'}
+        })
+
+        await Permesso.findOrCreate({
+            where: {name: 'utenti:gestione'},
+            defaults: {
+                description: 'Permette di visualizzare, modificare e disattivare gli utenti'}
         })
         console.log('Permessi di sistema pronti')
 
@@ -40,10 +64,11 @@ async function avviaInizializzazione() {
         })
         console.log('Ruoli standard creati')
 
-        // assegnazione dei permessi all'admin
+        // assegnazione di tutti i permessi all'admin
         // sequelize crea automaticamente i metodi set o add per le relazioni molti a molti
-        await ruoloAdmin.setPermessi([permessoCatalogo, ])
-        console.log('Permessi associati al ruolo Admin')
+        const tuttiIPermessi = await Permesso.findAll()
+        await ruoloAdmin.setPermessi(tuttiIPermessi)
+        console.log(`Tutti i permessi (${tuttiIPermessi.length}) associati al ruolo Admin`)
 
         // creazione utente admin
         const emailAdmin = 'admin@orvent.it'
