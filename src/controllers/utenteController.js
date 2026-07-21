@@ -1,4 +1,4 @@
-const {Utente, Ruolo} = require ('../models')
+const {Utente, Ruolo, Gruppo} = require ('../models')
 const bcrypt = require('bcrypt')
 
 // registrazione nuovo utente
@@ -35,6 +35,12 @@ const registra = async (req, res) => {
             email,
             password_hash: passwordCifrata
         })
+
+        // assegna il ruolo CLIENTE di default a chi si registra autonomamente
+        const ruoloCliente = await Ruolo.findOne({ where: { name: 'CLIENTE' } })
+        if (ruoloCliente) {
+            await nuovoUtente.addRuoli_diretti(ruoloCliente)
+        }
 
         // risposta nel json
         return res.status(201).json({
@@ -83,6 +89,79 @@ const ottieniProfilo = async (req, res) => {
         console.error('Errore nel recupero del profilo:', error)
         return res.status(500).json({
             message: 'Errore interno del server durante il recupero del profilo'
+        })
+    }
+}
+
+// crea un utente scegliendo ruolo e gruppi direttamente (uso amministrativo, richiede 'utenti:gestione')
+const creaUtente = async (req, res) => {
+    try {
+        const { nome, cognome, email, password, ruolo, gruppi } = req.body
+
+        if (!nome || !cognome || !email || !password) {
+            return res.status(400).json({
+                message: 'Tutti i campi sono obbligatori'
+            })
+        }
+
+        const utenteEsistente = await Utente.findOne({ where: { email } })
+        if (utenteEsistente) {
+            return res.status(400).json({
+                message: 'Questa email è già associata a un account'
+            })
+        }
+
+        const nomeRuolo = ruolo || 'CLIENTE'
+        const ruoloTrovato = await Ruolo.findOne({ where: { name: nomeRuolo } })
+        if (!ruoloTrovato) {
+            return res.status(400).json({
+                message: `Il ruolo "${nomeRuolo}" non esiste`
+            })
+        }
+
+        // i gruppi sono opzionali: se indicati devono esistere tutti, altrimenti errore
+        const nomiGruppi = gruppi || []
+        const gruppiTrovati = []
+        for (const nomeGruppo of nomiGruppi) {
+            const gruppoTrovato = await Gruppo.findOne({ where: { name: nomeGruppo } })
+            if (!gruppoTrovato) {
+                return res.status(400).json({
+                    message: `Il gruppo "${nomeGruppo}" non esiste`
+                })
+            }
+            gruppiTrovati.push(gruppoTrovato)
+        }
+
+        const salt = await bcrypt.genSalt(10)
+        const passwordCifrata = await bcrypt.hash(password, salt)
+
+        const nuovoUtente = await Utente.create({
+            nome,
+            cognome,
+            email,
+            password_hash: passwordCifrata
+        })
+
+        await nuovoUtente.addRuoli_diretti(ruoloTrovato)
+        if (gruppiTrovati.length > 0) {
+            await nuovoUtente.addGruppi(gruppiTrovati)
+        }
+
+        return res.status(201).json({
+            message: 'Utente creato con successo',
+            utente: {
+                id: nuovoUtente.id,
+                nome: nuovoUtente.nome,
+                cognome: nuovoUtente.cognome,
+                email: nuovoUtente.email,
+                ruolo: ruoloTrovato.name,
+                gruppi: gruppiTrovati.map(g => g.name)
+            }
+        })
+    } catch (error) {
+        console.error('Errore durante la creazione dell\'utente:', error)
+        return res.status(500).json({
+            message: 'Errore interno del server durante la creazione dell\'utente'
         })
     }
 }
@@ -232,4 +311,4 @@ const elimina = async (req, res) => {
     }
 }
 
-module.exports= {registra, ottieniProfilo, lista, visualizzaUtente, aggiornaProfilo, modifica, elimina}
+module.exports= {registra, creaUtente, ottieniProfilo, lista, visualizzaUtente, aggiornaProfilo, modifica, elimina}
