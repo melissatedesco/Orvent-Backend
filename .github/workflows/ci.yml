@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main, melissa-branch]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "no"
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write .env.test
+        run: |
+          cat <<'EOF' > .env.test
+          PORT=3001
+          NODE_ENV=test
+          DB_HOST=127.0.0.1
+          DB_USER=root
+          DB_PASSWORD=root
+          DB_NAME=orvent_test
+          DB_PORT=3306
+          JWT_SECRET=ci_test_secret_not_for_production
+          JWT_EXPIRES_IN=8h
+          EOF
+
+      - name: Run tests
+        run: npm test

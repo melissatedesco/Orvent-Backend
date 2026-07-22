@@ -22,15 +22,4 @@ pool: {
 }
 })
 
-// verifica della connessione
-
-// questo blocco si accerta che le credenziali inserite sopra siano corrette
-sequelize.authenticate()
-.then(() => {
-    console.log('Connessione al database MySQL stabilite con successo')
-})
-.catch((err) => {
-    console.error('Impossibile connettersi al database MySQL:', err)
-})
-
 module.exports = sequelize

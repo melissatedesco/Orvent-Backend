@@ -46,6 +46,30 @@ const assegnaAUtente = async (req, res) =>  {
 }
 
 
+// rimuove un permesso assegnato direttamente all'utente
+const rimuoviDaUtente = async (req, res) => {
+    try {
+        const {utenteId, permessoId} = req.body
+        const utente = await Utente.findByPk(utenteId)
+        const permesso = await Permesso.findByPk(permessoId)
+
+        if(!utente || !permesso)
+            return res.status(404).json({
+        message: 'Utente o Permesso non trovato'
+    })
+
+    await utente.removePermessi_diretti(permesso)
+    return res.status(200).json({
+        message: `Permesso "${permesso.name}" rimosso da ${utente.nome}`
+    })
+
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Errore del server'
+        })
+    }
+}
+
 // lista di tutti i permessi
 const lista = async (req, res) => {
     try {
@@ -133,4 +157,4 @@ const elimina = async (req, res) => {
     }
 }
 
-module.exports={ creaPermesso, assegnaAUtente, lista, visualizzaPermesso, modifica, elimina}
+module.exports={ creaPermesso, assegnaAUtente, rimuoviDaUtente, lista, visualizzaPermesso, modifica, elimina}
