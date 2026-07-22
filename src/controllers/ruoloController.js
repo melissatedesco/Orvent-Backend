@@ -69,6 +69,53 @@ const assegnaAUtente = async (req, res) => {
     }
 }
 
+// rimuove un permesso da un ruolo
+const rimuoviPermesso = async (req, res) => {
+    try {
+        const {ruoloId, permessoId} = req.body
+        const ruolo = await Ruolo.findByPk(ruoloId)
+        const permesso = await Permesso.findByPk(permessoId)
+
+        if(!ruolo || !permesso)
+            return res.status(404).json({
+        message: 'Non trovato'
+    })
+
+    await ruolo.removePermessi(permesso)
+    return res.status(200).json({
+        message: 'Permesso rimosso dal ruolo'
+    })
+
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Errore del server'
+        })
+    }
+}
+
+// rimuove un ruolo diretto dall'utente
+const rimuoviDaUtente = async (req, res) => {
+    try {
+        const {utenteId, ruoloId} = req.body
+        const utente = await Utente.findByPk(utenteId)
+        const ruolo = await Ruolo.findByPk(ruoloId)
+
+        if(!utente || !ruolo)
+            return res.status(404).json({
+            message: 'Non trovato'
+        })
+
+        await utente.removeRuoli_diretti(ruolo)
+        return res.status(200).json({
+            message: 'Ruolo rimosso dall\'utente'
+        })
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Errore del server'
+        })
+    }
+}
+
 // lista di tutti i ruoli
 const lista = async (req, res) => {
     try {
@@ -154,4 +201,4 @@ const elimina = async (req, res) => {
     }
 }
 
-module.exports= {creaRuolo, assegnaAUtente, associaPermesso, lista, visualizzaRuolo, modifica, elimina}
+module.exports= {creaRuolo, assegnaAUtente, associaPermesso, rimuoviPermesso, rimuoviDaUtente, lista, visualizzaRuolo, modifica, elimina}

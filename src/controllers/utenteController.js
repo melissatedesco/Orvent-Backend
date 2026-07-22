@@ -1,5 +1,5 @@
 const {Utente, Ruolo, Gruppo} = require ('../models')
-const bcrypt = require('bcrypt')
+const bcrypt = require('bcryptjs')
 
 // registrazione nuovo utente
 const registra = async (req, res) => {

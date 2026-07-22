@@ -72,6 +72,54 @@ const aggiungiUtente = async (req, res) => {
     }
 }
 
+// rimuove un ruolo dal gruppo
+const rimuoviRuolo = async (req, res) => {
+    try {
+        const {gruppoId, ruoloId} = req.body
+        const gruppo = await Gruppo.findByPk(gruppoId)
+        const ruolo = await Ruolo.findByPk(ruoloId)
+
+        if(!gruppo || !ruolo)
+            return res.status(404).json({
+                message: 'Non trovato'
+            })
+
+        await gruppo.removeRuoli_gruppo(ruolo)
+        return res.status(200).json({
+            message: 'Ruolo rimosso dal gruppo'
+        })
+
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Errore del server'
+        })
+    }
+}
+
+// rimuove un utente dal gruppo
+const rimuoviUtente = async (req, res) => {
+    try {
+        const {utenteId, gruppoId} = req.body
+        const utente = await Utente.findByPk(utenteId)
+        const gruppo = await Gruppo.findByPk(gruppoId)
+
+        if(!utente || !gruppo)
+            return res.status(404).json({
+                message: 'Non trovato'
+            })
+
+        await utente.removeGruppi(gruppo)
+        return res.status(200).json({
+            message: 'Utente rimosso dal gruppo'
+        })
+
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Errore del server'
+        })
+    }
+}
+
 // lista di tutti i gruppi
 const lista = async (req, res) => {
     try {
@@ -161,4 +209,4 @@ const elimina = async (req, res) => {
     }
 }
 
-module.exports = {creaGruppo, associaRuolo, aggiungiUtente, lista, visualizzaGruppo, modifica, elimina}
+module.exports = {creaGruppo, associaRuolo, rimuoviRuolo, aggiungiUtente, rimuoviUtente, lista, visualizzaGruppo, modifica, elimina}
