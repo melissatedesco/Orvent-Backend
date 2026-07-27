@@ -25,6 +25,25 @@ describe('Utenti: registrazione pubblica', () => {
         expect(utenteDb.ruoli_diretti.map(r => r.name)).toContain('CLIENTE')
     })
 
+    test('un fallimento nell\'assegnazione del ruolo annulla anche la creazione dell\'utente (transazione)', async () => {
+        await creaRuoloConPermessi('CLIENTE', ['ordini:creare'])
+
+        const erroreSimulato = jest.spyOn(Utente.prototype, 'addRuoli_diretti')
+            .mockRejectedValueOnce(new Error('errore DB simulato'))
+
+        const risposta = await request(app)
+            .post('/api/utenti/registrati')
+            .send({ nome: 'Luca', cognome: 'Bianchi', email: 'transazione@example.com', password: 'Password123!' })
+
+        expect(risposta.status).toBe(500)
+
+        // senza la transazione, qui troveremmo un utente creato ma senza il ruolo CLIENTE
+        const utenteDb = await Utente.findOne({ where: { email: 'transazione@example.com' } })
+        expect(utenteDb).toBeNull()
+
+        erroreSimulato.mockRestore()
+    })
+
     test('rifiuta la registrazione se mancano campi obbligatori', async () => {
         const risposta = await request(app)
             .post('/api/utenti/registrati')

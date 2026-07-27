@@ -65,6 +65,11 @@ Ordine.belongsTo(Utente, {
     foreignKey: 'user_id', as: 'user'
 })
 
+// operatore => ordini evasi (tracciabilita': chi ha evaso l'ordine)
+Ordine.belongsTo(Utente, {
+    foreignKey: 'operatore_id', as: 'operatore'
+})
+
 // ordine => righe ordine (uno a molti: un ordine contiene più prodotti/righe)
 Ordine.hasMany(RigaOrdine, {
     foreignKey:'ordine_id', as:'righe'

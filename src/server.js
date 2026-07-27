@@ -1,4 +1,15 @@
 require('dotenv').config()
+
+// senza JWT_SECRET l'app non deve avviarsi: un fallback hardcoded nel codice sarebbe
+// un segreto noto a chiunque veda il repository, capace di forgiare un token valido
+// per qualsiasi utente. Meglio un crash rumoroso al deploy che un buco silenzioso in
+// produzione. Il controllo va fatto PRIMA di richiedere ./app, perche' richiederlo
+// carica a sua volta i controller che leggono process.env.JWT_SECRET al load del modulo
+if (!process.env.JWT_SECRET) {
+    console.error('JWT_SECRET non impostata: impossibile avviare il server in sicurezza.')
+    process.exit(1)
+}
+
 const app = require('./app')
 const { sequelize } = require('./models')
 

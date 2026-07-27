@@ -64,6 +64,16 @@ Prodotto.init({
     }
   },
 
+  aliquota_iva: {
+    type: DataTypes.DECIMAL(5, 2), // percentuale (es. 22.00, 10.00, 4.00, 0.00)
+    allowNull: false,
+    defaultValue: 22.00,
+    validate: {
+      min: { args: [0], msg: "L'aliquota IVA non può essere negativa." },
+      max: { args: [100], msg: "L'aliquota IVA non può superare il 100%." }
+    }
+  },
+
   attivo: {
     type: DataTypes.BOOLEAN,
     allowNull: false,

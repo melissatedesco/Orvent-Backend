@@ -71,8 +71,38 @@ Fattura.init({
 
   percorso_pdf: {
     type: DataTypes.STRING,
+    allowNull: true
+    // Memorizza il percorso del file sul server o sul cloud (es. /output/fatture/fattura_1.pdf).
+    // NULL = PDF non ancora generato: il numero e gli importi sono gia' committati (la
+    // generazione del PDF avviene DOPO, fuori dalla transazione), un fallimento qui non
+    // deve mai bruciare il numero ne' bloccare l'ordine in uno stato inconsistente. Un
+    // tentativo successivo su un ordine gia' FATTURATO con percorso_pdf nullo completa
+    // la generazione riusando la stessa fattura, senza crearne una nuova.
+  },
+
+  // dati cliente CONGELATI al momento della generazione: una fattura e' un documento
+  // fiscale chiuso, il suo contenuto non deve cambiare se il cliente aggiorna il profilo
+  cliente_ragione_sociale: {
+    type: DataTypes.STRING,
     allowNull: false
-    // Memorizza il percorso del file sul server o sul cloud (es. /output/fatture/fattura_1.pdf)
+  },
+
+  cliente_partita_iva: {
+    type: DataTypes.STRING,
+    allowNull: true // clienti B2C: valorizzato invece cliente_codice_fiscale
+  },
+
+  cliente_codice_fiscale: {
+    type: DataTypes.STRING,
+    allowNull: true // clienti B2B: valorizzato invece cliente_partita_iva
+  },
+
+  cliente_indirizzo: {
+    type: DataTypes.STRING,
+    allowNull: false
+    // REQUISITO DI DOMINIO: sempre obbligatorio, a differenza di partita_iva/codice_fiscale
+    // (di cui basta uno dei due). Una fattura senza indirizzo del destinatario non e' un
+    // documento fiscale valido: generaFattura lo valida prima di creare la riga.
   }
 }, {
   // =========================================================================

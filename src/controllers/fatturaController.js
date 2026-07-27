@@ -1,4 +1,7 @@
 const { Fattura, Ordine, RigaOrdine, Utente } = require('../models')
+// nota: Utente resta importato per codaDaFatturare, che elenca ordini EVASI non ancora
+// fatturati e quindi mostra legittimamente i dati anagrafici live (non esiste ancora
+// nessuna fattura, e quindi nessun documento "chiuso", da cui leggerli congelati)
 const fatturaService = require('../services/fatturaService')
 
 // contabilità: coda degli ordini evasi ma non ancora fatturati
@@ -55,14 +58,13 @@ const lista = async (req, res) => {
 const visualizzaFattura = async (req, res) => {
     try {
         const { id } = req.params
+        // i dati cliente si leggono dai campi congelati sulla fattura stessa
+        // (cliente_ragione_sociale, ecc.), mai da un join live verso Utente
         const fattura = await Fattura.findByPk(id, {
             include: [{
                 model: Ordine,
                 as: 'ordine',
-                include: [
-                    { model: RigaOrdine, as: 'righe' },
-                    { model: Utente, as: 'user', attributes: ['id', 'nome', 'cognome', 'email'] }
-                ]
+                include: [{ model: RigaOrdine, as: 'righe' }]
             }]
         })
 

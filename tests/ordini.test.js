@@ -51,6 +51,20 @@ describe('Ordini: transazioni, congelamento prezzo e stock', () => {
         expect(await Ordine.count()).toBe(0)
     })
 
+    test('una quantita non numerica viene rifiutata con 400, non propagata come NaN', async () => {
+        const prodotto = await creaProdotto({ scorta: 10 })
+        const { utente } = await creaCliente()
+        const token = generaToken(utente)
+
+        const risposta = await request(app)
+            .post('/api/ordini')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ righe: [{ prodottoId: prodotto.id, quantita: 'abc' }] })
+
+        expect(risposta.status).toBe(400)
+        expect(await Ordine.count()).toBe(0)
+    })
+
     test('operatore: prendi in carico ed evadi scalano correttamente lo stock', async () => {
         const prodotto = await creaProdotto({ scorta: 10 })
         const { utente: cliente } = await creaCliente()
@@ -78,6 +92,35 @@ describe('Ordini: transazioni, congelamento prezzo e stock', () => {
 
         const prodottoDopo = await Prodotto.findByPk(prodotto.id)
         expect(parseFloat(prodottoDopo.scorta)).toBe(6)
+    })
+
+    test('l\'operatore non vede prezzi e importi ne\' in prendi-in-carico ne\' in evadi', async () => {
+        // evadi in particolare carica ordine.righe per scalare lo stock: senza il filtro,
+        // prezzo_congelato per riga finirebbe nella risposta come effetto collaterale
+        const prodotto = await creaProdotto({ prezzo: 42, scorta: 10 })
+        const { utente: cliente } = await creaCliente()
+        const { utente: operatore } = await creaOperatore()
+        const tokenCliente = generaToken(cliente)
+        const tokenOperatore = generaToken(operatore)
+
+        const { body } = await request(app)
+            .post('/api/ordini')
+            .set('Authorization', `Bearer ${tokenCliente}`)
+            .send({ righe: [{ prodottoId: prodotto.id, quantita: 2 }] })
+        const idOrdine = body.ordine.id
+
+        const presoInCarico = await request(app)
+            .post(`/api/ordini/${idOrdine}/prendi-in-carico`)
+            .set('Authorization', `Bearer ${tokenOperatore}`)
+        expect(presoInCarico.body.ordine.totale_importo).toBeUndefined()
+
+        const evaso = await request(app)
+            .post(`/api/ordini/${idOrdine}/evadi`)
+            .set('Authorization', `Bearer ${tokenOperatore}`)
+        expect(evaso.body.ordine.totale_importo).toBeUndefined()
+        evaso.body.ordine.righe.forEach(riga => {
+            expect(riga.prezzo_congelato).toBeUndefined()
+        })
     })
 
     test('evadere un ordine con scorta diventata insufficiente nel frattempo fallisce senza modificare nulla', async () => {
@@ -138,6 +181,98 @@ describe('Ordini: transazioni, congelamento prezzo e stock', () => {
 
         const ordiniEvasi = await Ordine.count({ where: { stato: 'EVASO' } })
         expect(ordiniEvasi).toBe(1)
+    })
+
+    test('evadere un ordine registra chi lo ha evaso e quando', async () => {
+        const prodotto = await creaProdotto({ scorta: 10 })
+        const { utente: cliente } = await creaCliente()
+        const { utente: operatore } = await creaOperatore()
+        const tokenCliente = generaToken(cliente)
+        const tokenOperatore = generaToken(operatore)
+
+        const { body } = await request(app)
+            .post('/api/ordini')
+            .set('Authorization', `Bearer ${tokenCliente}`)
+            .send({ righe: [{ prodottoId: prodotto.id, quantita: 1 }] })
+
+        const prima = new Date()
+        await request(app)
+            .post(`/api/ordini/${body.ordine.id}/evadi`)
+            .set('Authorization', `Bearer ${tokenOperatore}`)
+
+        const ordineDopo = await Ordine.findByPk(body.ordine.id)
+        expect(ordineDopo.operatore_id).toBe(operatore.id)
+        expect(ordineDopo.data_evasione).not.toBeNull()
+        expect(new Date(ordineDopo.data_evasione).getTime()).toBeGreaterThanOrEqual(prima.getTime() - 1000)
+    })
+
+    test('due evasioni concorrenti su ordini con gli stessi prodotti in sequenza invertita non vanno in stallo', async () => {
+        // ordine1 blocchera' prodottoA poi prodottoB; ordine2 (con le righe create in ordine
+        // opposto) deve comunque lockare prima prodottoA e poi prodottoB, non il contrario:
+        // e' esattamente l'ordinamento per prodotto_id in evadiOrdine a prevenire il deadlock
+        const prodottoA = await creaProdotto({ scorta: 10 })
+        const prodottoB = await creaProdotto({ scorta: 10 })
+        const { utente: cliente } = await creaCliente()
+        const { utente: operatore } = await creaOperatore()
+        const tokenCliente = generaToken(cliente)
+        const tokenOperatore = generaToken(operatore)
+
+        const ordine1 = await request(app)
+            .post('/api/ordini')
+            .set('Authorization', `Bearer ${tokenCliente}`)
+            .send({ righe: [
+                { prodottoId: prodottoA.id, quantita: 1 },
+                { prodottoId: prodottoB.id, quantita: 1 }
+            ] })
+        const ordine2 = await request(app)
+            .post('/api/ordini')
+            .set('Authorization', `Bearer ${tokenCliente}`)
+            .send({ righe: [
+                { prodottoId: prodottoB.id, quantita: 1 },
+                { prodottoId: prodottoA.id, quantita: 1 }
+            ] })
+
+        const [risposta1, risposta2] = await Promise.all([
+            request(app).post(`/api/ordini/${ordine1.body.ordine.id}/evadi`).set('Authorization', `Bearer ${tokenOperatore}`),
+            request(app).post(`/api/ordini/${ordine2.body.ordine.id}/evadi`).set('Authorization', `Bearer ${tokenOperatore}`)
+        ])
+
+        expect(risposta1.status).toBe(200)
+        expect(risposta2.status).toBe(200)
+    })
+
+    test('una creaOrdine e una evadiOrdine concorrenti sugli stessi prodotti, in ordine incrociato, non vanno in stallo', async () => {
+        // ordineEsistente coinvolge prodottoA e prodottoB: evadiOrdine li lockera' per
+        // prodotto_id (A poi B). Una NUOVA creaOrdine, concorrente, arriva con le righe
+        // in ordine opposto nel carrello ([B, A]): se creaOrdine lockasse nell'ordine del
+        // carrello (B poi A) mentre evadiOrdine lockera' (A poi B), si formerebbe comunque
+        // un ciclo di attesa, anche se nessuno dei due percorsi e' "l'evasione doppia" del
+        // test precedente. L'ordinamento per prodottoId va applicato in entrambi i percorsi.
+        const prodottoA = await creaProdotto({ scorta: 10 })
+        const prodottoB = await creaProdotto({ scorta: 10 })
+        const { utente: cliente } = await creaCliente()
+        const { utente: operatore } = await creaOperatore()
+        const tokenCliente = generaToken(cliente)
+        const tokenOperatore = generaToken(operatore)
+
+        const ordineEsistente = await request(app)
+            .post('/api/ordini')
+            .set('Authorization', `Bearer ${tokenCliente}`)
+            .send({ righe: [
+                { prodottoId: prodottoA.id, quantita: 1 },
+                { prodottoId: prodottoB.id, quantita: 1 }
+            ] })
+
+        const [rispostaEvasione, rispostaCreazione] = await Promise.all([
+            request(app).post(`/api/ordini/${ordineEsistente.body.ordine.id}/evadi`).set('Authorization', `Bearer ${tokenOperatore}`),
+            request(app).post('/api/ordini').set('Authorization', `Bearer ${tokenCliente}`).send({ righe: [
+                { prodottoId: prodottoB.id, quantita: 1 },
+                { prodottoId: prodottoA.id, quantita: 1 }
+            ] })
+        ])
+
+        expect(rispostaEvasione.status).toBe(200)
+        expect(rispostaCreazione.status).toBe(201)
     })
 })
 

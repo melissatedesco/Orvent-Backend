@@ -1,16 +1,26 @@
 const request = require('supertest')
 const app = require('../src/app')
 const { Ruolo, Permesso, Gruppo, Utente } = require('../src/models')
-const { creaUtente } = require('./helpers/fixtures')
+const { creaUtente, creaUtenteConRuolo, generaToken } = require('./helpers/fixtures')
 
 describe('Rimozione associazioni RBAC (controparte degli endpoint di assegnazione)', () => {
+    // queste rotte sono amministrative: richiedono un utente autenticato con 'utenti:gestione'
+    // creato dentro ogni test (non in beforeAll) perche' il beforeEach globale in
+    // setupFilesAfterEnv.js svuota tutte le tabelle prima di ciascun test
+    const creaAdminSicurezza = async () => {
+        const { utente } = await creaUtenteConRuolo('RUOLO_ADMIN_RIMOZIONI', ['utenti:gestione'])
+        return generaToken(utente)
+    }
+
     test('rimuove un permesso da un ruolo', async () => {
+        const tokenAdmin = await creaAdminSicurezza()
         const ruolo = await Ruolo.create({ name: 'RUOLO_RIMOZIONE' })
         const permesso = await Permesso.create({ name: 'permesso:rimozione' })
         await ruolo.addPermessi(permesso)
 
         const risposta = await request(app)
             .delete('/api/sicurezza/ruoli/associa-permesso')
+            .set('Authorization', `Bearer ${tokenAdmin}`)
             .send({ ruoloId: ruolo.id, permessoId: permesso.id })
         expect(risposta.status).toBe(200)
 
@@ -19,17 +29,20 @@ describe('Rimozione associazioni RBAC (controparte degli endpoint di assegnazion
 
         const nonTrovato = await request(app)
             .delete('/api/sicurezza/ruoli/associa-permesso')
+            .set('Authorization', `Bearer ${tokenAdmin}`)
             .send({ ruoloId: 999999, permessoId: permesso.id })
         expect(nonTrovato.status).toBe(404)
     })
 
     test('rimuove un ruolo diretto da un utente', async () => {
+        const tokenAdmin = await creaAdminSicurezza()
         const utente = await creaUtente()
         const ruolo = await Ruolo.create({ name: 'RUOLO_DA_RIMUOVERE' })
         await utente.addRuoli_diretti(ruolo)
 
         const risposta = await request(app)
             .delete('/api/sicurezza/utenti/assegna-ruolo')
+            .set('Authorization', `Bearer ${tokenAdmin}`)
             .send({ utenteId: utente.id, ruoloId: ruolo.id })
         expect(risposta.status).toBe(200)
 
@@ -38,12 +51,14 @@ describe('Rimozione associazioni RBAC (controparte degli endpoint di assegnazion
     })
 
     test('rimuove un permesso assegnato direttamente a un utente', async () => {
+        const tokenAdmin = await creaAdminSicurezza()
         const utente = await creaUtente()
         const permesso = await Permesso.create({ name: 'permesso:diretto:rimuovi' })
         await utente.addPermessi_diretti(permesso)
 
         const risposta = await request(app)
             .delete('/api/sicurezza/permessi/assegna-diretto')
+            .set('Authorization', `Bearer ${tokenAdmin}`)
             .send({ utenteId: utente.id, permessoId: permesso.id })
         expect(risposta.status).toBe(200)
 
@@ -52,12 +67,14 @@ describe('Rimozione associazioni RBAC (controparte degli endpoint di assegnazion
     })
 
     test('rimuove un ruolo da un gruppo', async () => {
+        const tokenAdmin = await creaAdminSicurezza()
         const gruppo = await Gruppo.create({ name: 'GRUPPO_RIMOZIONE_RUOLO' })
         const ruolo = await Ruolo.create({ name: 'RUOLO_DEL_GRUPPO' })
         await gruppo.addRuoli_gruppo(ruolo)
 
         const risposta = await request(app)
             .delete('/api/sicurezza/gruppi/associa-ruolo')
+            .set('Authorization', `Bearer ${tokenAdmin}`)
             .send({ gruppoId: gruppo.id, ruoloId: ruolo.id })
         expect(risposta.status).toBe(200)
 
@@ -66,12 +83,14 @@ describe('Rimozione associazioni RBAC (controparte degli endpoint di assegnazion
     })
 
     test('rimuove un utente da un gruppo', async () => {
+        const tokenAdmin = await creaAdminSicurezza()
         const utente = await creaUtente()
         const gruppo = await Gruppo.create({ name: 'GRUPPO_RIMOZIONE_UTENTE' })
         await utente.addGruppi(gruppo)
 
         const risposta = await request(app)
             .delete('/api/sicurezza/utenti/assegna-gruppo')
+            .set('Authorization', `Bearer ${tokenAdmin}`)
             .send({ utenteId: utente.id, gruppoId: gruppo.id })
         expect(risposta.status).toBe(200)
 

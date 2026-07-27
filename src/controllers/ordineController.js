@@ -15,6 +15,13 @@ const formattaOrdine = (ordine, mostraPrezzi) => {
     return json
 }
 
+// stessa identica regola ovunque nel controller (lista, dettaglio, presa in carico,
+// evasione): il proprietario vede sempre i propri prezzi, chiunque altro solo con
+// 'ordini:gestione'. Un'unica funzione perche' duplicarla a mano endpoint per
+// endpoint e' esattamente come diverge: un endpoint aggiornato e uno dimenticato
+const puoVederePrezzi = (ordine, idUtente, permessi) =>
+    ordine.user_id === idUtente || Boolean(permessi?.has('ordini:gestione'))
+
 // cliente: invia un nuovo ordine a partire dal carrello
 const crea = async (req, res) => {
     try {
@@ -57,7 +64,6 @@ const lista = async (req, res) => {
         const where = stato ? { stato } : {}
 
         const permessi = await ottieniPermessiUtente(req.utente.id)
-        const mostraPrezzi = Boolean(permessi?.has('ordini:gestione'))
 
         const ordini = await Ordine.findAll({
             where,
@@ -68,7 +74,7 @@ const lista = async (req, res) => {
             order: [['createdAt', 'ASC']]
         })
 
-        return res.status(200).json(ordini.map(o => formattaOrdine(o, mostraPrezzi)))
+        return res.status(200).json(ordini.map(o => formattaOrdine(o, puoVederePrezzi(o, req.utente.id, permessi))))
     } catch (error) {
         console.error('Errore durante il recupero degli ordini:', error)
         return res.status(500).json({ message: 'Errore interno del server' })
@@ -97,8 +103,7 @@ const visualizzaOrdine = async (req, res) => {
             return res.status(403).json({ message: 'Accesso negato' })
         }
 
-        const mostraPrezzi = isProprietario || Boolean(permessi?.has('ordini:gestione'))
-        return res.status(200).json(formattaOrdine(ordine, mostraPrezzi))
+        return res.status(200).json(formattaOrdine(ordine, puoVederePrezzi(ordine, idUtente, permessi)))
     } catch (error) {
         console.error('Errore durante il recupero dell\'ordine:', error)
         return res.status(500).json({ message: 'Errore interno del server' })
@@ -125,7 +130,8 @@ const prendiInCarico = async (req, res) => {
     try {
         const { id } = req.params
         const ordine = await ordineService.prendiInCarico(id)
-        return res.status(200).json({ message: 'Ordine preso in carico', ordine })
+        const permessi = await ottieniPermessiUtente(req.utente.id)
+        return res.status(200).json({ message: 'Ordine preso in carico', ordine: formattaOrdine(ordine, puoVederePrezzi(ordine, req.utente.id, permessi)) })
     } catch (error) {
         console.error('Errore durante la presa in carico dell\'ordine:', error)
         return res.status(error.status || 500).json({
@@ -134,12 +140,16 @@ const prendiInCarico = async (req, res) => {
     }
 }
 
-// operatore: conferma la preparazione, evade l'ordine e scala automaticamente lo stock
+// operatore: conferma la preparazione, evade l'ordine e scala automaticamente lo stock.
+// il servizio carica anche ordine.righe (gli servono per scalare lo stock): senza
+// formattaOrdine qui, prezzo_congelato per riga e totale_importo finirebbero nella
+// risposta come effetto collaterale di un dato che serve solo alla logica interna
 const evadi = async (req, res) => {
     try {
         const { id } = req.params
-        const ordine = await ordineService.evadiOrdine(id)
-        return res.status(200).json({ message: 'Ordine evaso con successo', ordine })
+        const ordine = await ordineService.evadiOrdine(id, req.utente.id)
+        const permessi = await ottieniPermessiUtente(req.utente.id)
+        return res.status(200).json({ message: 'Ordine evaso con successo', ordine: formattaOrdine(ordine, puoVederePrezzi(ordine, req.utente.id, permessi)) })
     } catch (error) {
         console.error('Errore durante l\'evasione dell\'ordine:', error)
         return res.status(error.status || 500).json({
