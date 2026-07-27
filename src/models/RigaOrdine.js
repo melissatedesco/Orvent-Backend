@@ -56,6 +56,28 @@ RigaOrdine.init({
     allowNull: false
     // REQUISITO DI DOMINIO: Salva l'unità di misura (es. PEZZO, KG, METRO) al momento dell'ordine.
     // Se l'azienda cambia l'unità nel catalogo in futuro, l'ordine storico resta integro.
+  },
+
+  codice_congelato: {
+    type: DataTypes.STRING,
+    allowNull: false
+    // REQUISITO DI DOMINIO: SKU del prodotto al momento dell'ordine. Se il prodotto viene
+    // rinominato o il suo SKU cambia in futuro, la riga storica non deve risentirne.
+  },
+
+  descrizione_congelata: {
+    type: DataTypes.STRING,
+    allowNull: false
+    // REQUISITO DI DOMINIO: nome/descrizione del prodotto al momento dell'ordine, usato
+    // su ordini e fatture al posto di una lettura live dal catalogo.
+  },
+
+  aliquota_congelata: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: false
+    // REQUISITO DI DOMINIO: aliquota IVA del prodotto al momento dell'ordine. Prodotti
+    // diversi possono avere aliquote diverse (beni, alimentari, libri, servizi agevolati):
+    // la fattura calcola l'IVA riga per riga usando questo valore, non un'unica costante.
   }
 }, {
   // =========================================================================

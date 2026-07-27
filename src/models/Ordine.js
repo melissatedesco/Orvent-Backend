@@ -44,7 +44,15 @@ Ordine.init({
         msg: "Il totale dell'importo non può essere negativo."
       }
     }
+  },
+
+  data_evasione: {
+    type: DataTypes.DATE,
+    allowNull: true
+    // REQUISITO DI TRACCIABILITA': valorizzata solo quando l'ordine passa a EVASO.
   }
+  // Nota: l'ID dell'operatore che ha evaso (operatore_id) viene aggiunto tramite
+  // l'associazione belongsTo verso Utente in models/index.js
 }, {
   // =========================================================================
   // 4. OPZIONI DI CONFIGURAZIONE DEL MODELLO

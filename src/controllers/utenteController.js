@@ -1,10 +1,10 @@
-const {Utente, Ruolo, Gruppo} = require ('../models')
+const {Utente, Ruolo, Gruppo, sequelize} = require ('../models')
 const bcrypt = require('bcryptjs')
 
 // registrazione nuovo utente
 const registra = async (req, res) => {
     try {
-        const { nome, cognome, email, password} = req.body
+        const { nome, cognome, email, password, partita_iva, codice_fiscale, indirizzo, cap, citta, provincia } = req.body
 
         // controllo campi obbligatori
         if(!nome || !cognome || !email || !password) {
@@ -28,19 +28,33 @@ const registra = async (req, res) => {
         const salt = await bcrypt.genSalt(10)
         const passwordCifrata = await bcrypt.hash(password, salt)
 
-        // creazione dell'utente
-        const nuovoUtente = await Utente.create({
-            nome,
-            cognome,
-            email,
-            password_hash: passwordCifrata
-        })
+        // creazione dell'utente + assegnazione del ruolo in un'unica transazione: senza,
+        // un guasto tra le due scritture lascerebbe un utente creato e committato ma
+        // senza il ruolo CLIENTE, incapace di ordinare senza che nessuno se ne accorga
+        const nuovoUtente = await sequelize.transaction(async (t) => {
+            // dati fiscali/indirizzo facoltativi in fase di registrazione: servono a
+            // congelare un destinatario fattura valido quando verrà emesso un documento
+            const utente = await Utente.create({
+                nome,
+                cognome,
+                email,
+                password_hash: passwordCifrata,
+                partita_iva,
+                codice_fiscale,
+                indirizzo,
+                cap,
+                citta,
+                provincia
+            }, { transaction: t })
 
-        // assegna il ruolo CLIENTE di default a chi si registra autonomamente
-        const ruoloCliente = await Ruolo.findOne({ where: { name: 'CLIENTE' } })
-        if (ruoloCliente) {
-            await nuovoUtente.addRuoli_diretti(ruoloCliente)
-        }
+            // assegna il ruolo CLIENTE di default a chi si registra autonomamente
+            const ruoloCliente = await Ruolo.findOne({ where: { name: 'CLIENTE' }, transaction: t })
+            if (ruoloCliente) {
+                await utente.addRuoli_diretti(ruoloCliente, { transaction: t })
+            }
+
+            return utente
+        })
 
         // risposta nel json
         return res.status(201).json({
@@ -49,7 +63,13 @@ const registra = async (req, res) => {
                 id: nuovoUtente.id,
                 nome: nuovoUtente.nome,
                 cognome: nuovoUtente.cognome,
-                email: nuovoUtente.email
+                email: nuovoUtente.email,
+                partita_iva: nuovoUtente.partita_iva,
+                codice_fiscale: nuovoUtente.codice_fiscale,
+                indirizzo: nuovoUtente.indirizzo,
+                cap: nuovoUtente.cap,
+                citta: nuovoUtente.citta,
+                provincia: nuovoUtente.provincia
             }
         })
     } catch (error) {
@@ -135,17 +155,24 @@ const creaUtente = async (req, res) => {
         const salt = await bcrypt.genSalt(10)
         const passwordCifrata = await bcrypt.hash(password, salt)
 
-        const nuovoUtente = await Utente.create({
-            nome,
-            cognome,
-            email,
-            password_hash: passwordCifrata
-        })
+        // creazione + assegnazione ruolo/gruppi in un'unica transazione, per lo stesso
+        // motivo di registra(): un guasto a meta' non deve lasciare un utente creato
+        // ma privo del ruolo/gruppi scelti dall'admin
+        const nuovoUtente = await sequelize.transaction(async (t) => {
+            const utente = await Utente.create({
+                nome,
+                cognome,
+                email,
+                password_hash: passwordCifrata
+            }, { transaction: t })
 
-        await nuovoUtente.addRuoli_diretti(ruoloTrovato)
-        if (gruppiTrovati.length > 0) {
-            await nuovoUtente.addGruppi(gruppiTrovati)
-        }
+            await utente.addRuoli_diretti(ruoloTrovato, { transaction: t })
+            if (gruppiTrovati.length > 0) {
+                await utente.addGruppi(gruppiTrovati, { transaction: t })
+            }
+
+            return utente
+        })
 
         return res.status(201).json({
             message: 'Utente creato con successo',
@@ -208,7 +235,7 @@ const visualizzaUtente = async (req, res) => {
 const aggiornaProfilo = async (req, res) => {
     try {
         const idUtente = req.utente.id
-        const { nome, cognome, password } = req.body
+        const { nome, cognome, password, partita_iva, codice_fiscale, indirizzo, cap, citta, provincia } = req.body
 
         const utente = await Utente.findByPk(idUtente)
         if (!utente) {
@@ -219,6 +246,12 @@ const aggiornaProfilo = async (req, res) => {
 
         if (nome !== undefined) utente.nome = nome
         if (cognome !== undefined) utente.cognome = cognome
+        if (partita_iva !== undefined) utente.partita_iva = partita_iva
+        if (codice_fiscale !== undefined) utente.codice_fiscale = codice_fiscale
+        if (indirizzo !== undefined) utente.indirizzo = indirizzo
+        if (cap !== undefined) utente.cap = cap
+        if (citta !== undefined) utente.citta = citta
+        if (provincia !== undefined) utente.provincia = provincia
         if (password) {
             const salt = await bcrypt.genSalt(10)
             utente.password_hash = await bcrypt.hash(password, salt)
@@ -232,7 +265,13 @@ const aggiornaProfilo = async (req, res) => {
                 id: utente.id,
                 nome: utente.nome,
                 cognome: utente.cognome,
-                email: utente.email
+                email: utente.email,
+                partita_iva: utente.partita_iva,
+                codice_fiscale: utente.codice_fiscale,
+                indirizzo: utente.indirizzo,
+                cap: utente.cap,
+                citta: utente.citta,
+                provincia: utente.provincia
             }
         })
     } catch (error) {

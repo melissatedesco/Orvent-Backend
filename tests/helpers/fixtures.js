@@ -29,14 +29,24 @@ const creaGruppoConRuolo = async (nomeGruppo, ruolo) => {
 }
 
 // crea un utente "vuoto", senza ruoli/permessi/gruppi
+// profilo fiscale di default valido (indirizzo + codice fiscale, come un privato B2C),
+// cosi' i test che non se ne occupano non si rompono quando generano una fattura.
+// Per testare un profilo incompleto, passa esplicitamente null (es. { indirizzo: null }).
 const creaUtente = async (overrides = {}) => {
     const passwordHash = await bcrypt.hash('Password123!', 10)
+    const conDefault = (valore, default_) => (valore !== undefined ? valore : default_)
     return Utente.create({
         nome: overrides.nome || 'Test',
         cognome: overrides.cognome || 'Utente',
         email: overrides.email || `test-${prossimoId()}@example.com`,
         password_hash: passwordHash,
-        attivo: overrides.attivo ?? true
+        attivo: overrides.attivo ?? true,
+        partita_iva: conDefault(overrides.partita_iva, null),
+        codice_fiscale: conDefault(overrides.codice_fiscale, 'TSTUTN80A01H501U'),
+        indirizzo: conDefault(overrides.indirizzo, 'Via Test 1'),
+        cap: conDefault(overrides.cap, '00100'),
+        citta: conDefault(overrides.citta, 'Roma'),
+        provincia: conDefault(overrides.provincia, 'RM')
     })
 }
 

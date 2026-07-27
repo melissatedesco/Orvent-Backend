@@ -1,4 +1,13 @@
 const { sequelize, Ordine, RigaOrdine, Prodotto } = require('../models')
+const { eseguiConRetrySuDeadlock } = require('../utils/transazioni')
+
+// L'ordinamento dei lock sui prodotti (per prodottoId/prodotto_id) elimina i cicli
+// di attesa SU QUELLA risorsa, ma evadiOrdine locka l'ordine con un JOIN su RigaOrdine
+// (SELECT ... FOR UPDATE su un indice secondario, ordine_id): questo prende anche dei
+// next-key/gap lock sull'indice, che possono entrare in conflitto con l'INSERT di una
+// creaOrdine concorrente (bulkCreate su righe_ordine di un ordine diverso) tramite un
+// meccanismo indipendente dal lock sulle righe prodotto. Da qui il retry-su-deadlock
+// condiviso in src/utils/transazioni.js (usato anche da fatturaService).
 
 // crea un ordine dal carrello: congela prezzo e unita' di misura del prodotto al momento dell'invio
 // e verifica solo la disponibilita' (lo stock viene scalato in fase di evasione, non alla creazione,
@@ -10,13 +19,27 @@ const creaOrdine = async (utenteId, righeCarrello) => {
         throw errore
     }
 
-    return sequelize.transaction(async (t) => {
+    return eseguiConRetrySuDeadlock(() => sequelize.transaction(async (t) => {
         let totale = 0
         const righeDaCreare = []
+        // solo transazione qui dentro: niente PDF/email/filesystem, vedi commento su eseguiConRetrySuDeadlock
 
-        for (const { prodottoId, quantita } of righeCarrello) {
-            if (!prodottoId || quantita === undefined || parseFloat(quantita) <= 0) {
-                const errore = new Error('Ogni riga del carrello deve indicare prodottoId e una quantità maggiore di zero')
+        // stesso ordinamento per prodottoId usato in evadiOrdine: i prodotti si lockano
+        // SEMPRE nella stessa sequenza in ogni percorso che acquisisce piu' lock nella
+        // stessa transazione. Altrimenti una creaOrdine con le righe [7, 3] concorrente a
+        // un'altra creaOrdine (o a un evadiOrdine, che ordina per prodotto_id) su [3, 7]
+        // formerebbero comunque un ciclo di attesa: il deadlock non dipende da quale dei
+        // due percorsi sia "l'evasione", ma dal fatto che i criteri di lock divergano
+        const righeOrdinate = [...righeCarrello].sort((a, b) => a.prodottoId - b.prodottoId)
+
+        for (const { prodottoId, quantita } of righeOrdinate) {
+            // Number.isFinite, non solo "<= 0": con quantita non numerica (es. "abc"),
+            // parseFloat restituisce NaN e "NaN <= 0" e' false, quindi senza questo
+            // controllo il ramo d'errore non scatterebbe e il NaN si propagherebbe nel
+            // totale dell'ordine invece di essere respinto con un 400 pulito
+            const quantitaNumerica = parseFloat(quantita)
+            if (!prodottoId || quantita === undefined || !Number.isFinite(quantitaNumerica) || quantitaNumerica <= 0) {
+                const errore = new Error('Ogni riga del carrello deve indicare prodottoId e una quantità numerica maggiore di zero')
                 errore.status = 400
                 throw errore
             }
@@ -42,7 +65,10 @@ const creaOrdine = async (utenteId, righeCarrello) => {
                 prodotto_id: prodotto.id,
                 quantita,
                 prezzo_congelato,
-                unita_misura_congelata: prodotto.tipo_unita
+                unita_misura_congelata: prodotto.tipo_unita,
+                codice_congelato: prodotto.sku,
+                descrizione_congelata: prodotto.nome,
+                aliquota_congelata: prodotto.aliquota_iva
             })
         }
 
@@ -61,7 +87,7 @@ const creaOrdine = async (utenteId, righeCarrello) => {
             include: [{ model: RigaOrdine, as: 'righe' }],
             transaction: t
         })
-    })
+    }), { contesto: `creaOrdine utente ${utenteId}` })
 }
 
 // il cliente annulla un proprio ordine: consentito solo da NUOVO, prima che l'operatore lo prenda
@@ -113,8 +139,9 @@ const prendiInCarico = async (ordineId) => {
 
 // evade l'ordine: riverifica la disponibilita' e scala lo stock in modo atomico e transazionale,
 // cosi' la scorta non scende mai sotto zero anche in caso di evasioni concorrenti
-const evadiOrdine = async (ordineId) => {
-    return sequelize.transaction(async (t) => {
+const evadiOrdine = async (ordineId, idOperatore) => {
+    // solo transazione qui dentro: niente PDF/email/filesystem, vedi commento su eseguiConRetrySuDeadlock
+    return eseguiConRetrySuDeadlock(() => sequelize.transaction(async (t) => {
         const ordine = await Ordine.findByPk(ordineId, {
             include: [{ model: RigaOrdine, as: 'righe' }],
             transaction: t,
@@ -133,7 +160,14 @@ const evadiOrdine = async (ordineId) => {
             throw errore
         }
 
-        for (const riga of ordine.righe) {
+        // le righe si lockano SEMPRE nello stesso ordine (per prodotto_id crescente):
+        // due evasioni concorrenti che coinvolgono gli stessi prodotti in sequenza diversa
+        // (es. ordine A: prodotti 5,8 - ordine B: prodotti 8,5) altrimenti si bloccherebbero
+        // a vicenda in attesa reciproca (deadlock), che MySQL risolverebbe abortendo una
+        // delle due transazioni con un errore non gestito invece del consueto 409
+        const righeOrdinate = [...ordine.righe].sort((a, b) => a.prodotto_id - b.prodotto_id)
+
+        for (const riga of righeOrdinate) {
             const prodotto = await Prodotto.findByPk(riga.prodotto_id, { transaction: t, lock: t.LOCK.UPDATE })
 
             if (!prodotto.haScortaSufficiente(riga.quantita)) {
@@ -146,10 +180,13 @@ const evadiOrdine = async (ordineId) => {
             await prodotto.save({ transaction: t })
         }
 
+        // tracciabilita': chi ha evaso l'ordine e quando
         ordine.stato = 'EVASO'
+        ordine.operatore_id = idOperatore
+        ordine.data_evasione = new Date()
         await ordine.save({ transaction: t })
         return ordine
-    })
+    }), { contesto: `evadiOrdine ordine ${ordineId}` })
 }
 
 module.exports = { creaOrdine, annullaOrdine, prendiInCarico, evadiOrdine }
